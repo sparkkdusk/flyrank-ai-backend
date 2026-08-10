@@ -145,27 +145,53 @@ def create_task(task: TaskCreate):
     }
 
 
-# Stage 3: This will be changed to SQLite
 @app.put(
     "/tasks/{task_id}",
     description="Update an existing task"
 )
 def update_task(task_id: int, updated_task: TaskCreate):
 
-    for task in tasks:
-        if task["id"] == task_id:
+    if not updated_task.title.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Title cannot be empty"
+        )
 
-            task["title"] = updated_task.title
+    connection = get_connection()
 
-            return task
-
-    raise HTTPException(
-        status_code=404,
-        detail=f"Task {task_id} not found"
+    cursor = connection.execute(
+        """
+        UPDATE tasks
+        SET title = ?
+        WHERE id = ?
+        """,
+        (updated_task.title, task_id)
     )
 
+    connection.commit()
 
-# Stage 3: This will be changed to SQLite
+    if cursor.rowcount == 0:
+        connection.close()
+
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task {task_id} not found"
+        )
+
+    row = connection.execute(
+        "SELECT * FROM tasks WHERE id = ?",
+        (task_id,)
+    ).fetchone()
+
+    connection.close()
+
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"])
+    }
+
+
 @app.delete(
     "/tasks/{task_id}",
     status_code=204,
@@ -173,14 +199,21 @@ def update_task(task_id: int, updated_task: TaskCreate):
 )
 def delete_task(task_id: int):
 
-    for task in tasks:
+    connection = get_connection()
 
-        if task["id"] == task_id:
-            tasks.remove(task)
-            return
-
-    raise HTTPException(
-        status_code=404,
-        detail=f"Task {task_id} not found"
+    cursor = connection.execute(
+        "DELETE FROM tasks WHERE id = ?",
+        (task_id,)
     )
 
+    connection.commit()
+
+    connection.close()
+
+    if cursor.rowcount == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task {task_id} not found"
+        )
+
+    return
