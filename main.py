@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from database import initialize_database
+from database import get_connection, initialize_database
 
 app = FastAPI(
     title="Task API",
@@ -10,10 +10,13 @@ app = FastAPI(
 
 initialize_database()
 
+
 class TaskCreate(BaseModel):
     title: str
 
 
+# Temporary in-memory storage for POST, PUT, DELETE.
+# These will be replaced with SQLite in Stages 2 and 3.
 tasks = [
     {
         "id": 1,
@@ -49,31 +52,59 @@ def health():
     }
 
 
+# Stage 1: Read all tasks from SQLite
 @app.get(
     "/tasks",
     description="Get all tasks"
 )
 def get_tasks():
-    return tasks
+    connection = get_connection()
+
+    rows = connection.execute(
+        "SELECT * FROM tasks"
+    ).fetchall()
+
+    connection.close()
+
+    return [
+        {
+            "id": row["id"],
+            "title": row["title"],
+            "done": bool(row["done"])
+        }
+        for row in rows
+    ]
 
 
+# Stage 1: Read one task from SQLite
 @app.get(
     "/tasks/{task_id}",
     description="Get a single task by ID"
 )
 def get_task(task_id: int):
+    connection = get_connection()
 
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
+    row = connection.execute(
+        "SELECT * FROM tasks WHERE id = ?",
+        (task_id,)
+    ).fetchone()
 
-    raise HTTPException(
-        status_code=404,
-        detail=f"Task {task_id} not found"
-    )
+    connection.close()
+
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task {task_id} not found"
+        )
+
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"])
+    }
 
 
-
+# Stage 2: This will be changed to SQLite
 @app.post(
     "/tasks",
     status_code=201,
@@ -98,9 +129,7 @@ def create_task(task: TaskCreate):
     return new_task
 
 
-
-
-
+# Stage 3: This will be changed to SQLite
 @app.put(
     "/tasks/{task_id}",
     description="Update an existing task"
@@ -120,6 +149,7 @@ def update_task(task_id: int, updated_task: TaskCreate):
     )
 
 
+# Stage 3: This will be changed to SQLite
 @app.delete(
     "/tasks/{task_id}",
     status_code=204,
@@ -137,3 +167,4 @@ def delete_task(task_id: int):
         status_code=404,
         detail=f"Task {task_id} not found"
     )
+
