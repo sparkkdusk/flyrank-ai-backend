@@ -104,7 +104,6 @@ def get_task(task_id: int):
     }
 
 
-# Stage 2: This will be changed to SQLite
 @app.post(
     "/tasks",
     status_code=201,
@@ -118,15 +117,32 @@ def create_task(task: TaskCreate):
             detail="Title cannot be empty"
         )
 
-    new_task = {
-        "id": len(tasks) + 1,
-        "title": task.title,
-        "done": False
+    connection = get_connection()
+
+    cursor = connection.execute(
+        """
+        INSERT INTO tasks (title, done)
+        VALUES (?, ?)
+        """,
+        (task.title, 0)
+    )
+
+    connection.commit()
+
+    new_task_id = cursor.lastrowid
+
+    row = connection.execute(
+        "SELECT * FROM tasks WHERE id = ?",
+        (new_task_id,)
+    ).fetchone()
+
+    connection.close()
+
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"])
     }
-
-    tasks.append(new_task)
-
-    return new_task
 
 
 # Stage 3: This will be changed to SQLite
