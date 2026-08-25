@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
 from database import get_connection, initialize_database
+
 
 app = FastAPI(
     title="Task API",
@@ -8,32 +10,13 @@ app = FastAPI(
     version="1.0"
 )
 
+
 initialize_database()
 
 
 class TaskCreate(BaseModel):
     title: str
-
-
-# Temporary in-memory storage for POST, PUT, DELETE.
-# These will be replaced with SQLite in Stages 2 and 3.
-tasks = [
-    {
-        "id": 1,
-        "title": "Learn FastAPI",
-        "done": False
-    },
-    {
-        "id": 2,
-        "title": "Build CRUD API",
-        "done": False
-    },
-    {
-        "id": 3,
-        "title": "Upload to GitHub",
-        "done": True
-    }
-]
+    done: bool = False
 
 
 @app.get("/")
@@ -52,58 +35,56 @@ def health():
     }
 
 
-# Stage 1: Read all tasks from SQLite
+# GET all tasks
 @app.get(
     "/tasks",
     description="Get all tasks"
 )
 def get_tasks():
+
     connection = get_connection()
 
-    rows = connection.execute(
-        "SELECT * FROM tasks"
-    ).fetchall()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM tasks"
+        )
+
+        rows = cursor.fetchall()
 
     connection.close()
 
-    return [
-        {
-            "id": row["id"],
-            "title": row["title"],
-            "done": bool(row["done"])
-        }
-        for row in rows
-    ]
+    return rows
 
 
-# Stage 1: Read one task from SQLite
+# GET one task
 @app.get(
     "/tasks/{task_id}",
     description="Get a single task by ID"
 )
 def get_task(task_id: int):
+
     connection = get_connection()
 
-    row = connection.execute(
-        "SELECT * FROM tasks WHERE id = ?",
-        (task_id,)
-    ).fetchone()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM tasks WHERE id = %s",
+            (task_id,)
+        )
+
+        row = cursor.fetchone()
 
     connection.close()
 
     if row is None:
         raise HTTPException(
             status_code=404,
-            detail=f"Task {task_id} not found"
+            detail="Task not found"
         )
 
-    return {
-        "id": row["id"],
-        "title": row["title"],
-        "done": bool(row["done"])
-    }
+    return row
 
 
+# CREATE task
 @app.post(
     "/tasks",
     status_code=201,
@@ -119,32 +100,26 @@ def create_task(task: TaskCreate):
 
     connection = get_connection()
 
-    cursor = connection.execute(
-        """
-        INSERT INTO tasks (title, done)
-        VALUES (?, ?)
-        """,
-        (task.title, 0)
-    )
+    with connection.cursor() as cursor:
+
+        cursor.execute(
+            """
+            INSERT INTO tasks (title, done)
+            VALUES (%s, %s)
+            RETURNING *
+            """,
+            (task.title, task.done)
+        )
+
+        row = cursor.fetchone()
 
     connection.commit()
-
-    new_task_id = cursor.lastrowid
-
-    row = connection.execute(
-        "SELECT * FROM tasks WHERE id = ?",
-        (new_task_id,)
-    ).fetchone()
-
     connection.close()
 
-    return {
-        "id": row["id"],
-        "title": row["title"],
-        "done": bool(row["done"])
-    }
+    return row
 
 
+# UPDATE task
 @app.put(
     "/tasks/{task_id}",
     description="Update an existing task"
@@ -159,39 +134,40 @@ def update_task(task_id: int, updated_task: TaskCreate):
 
     connection = get_connection()
 
-    cursor = connection.execute(
-        """
-        UPDATE tasks
-        SET title = ?
-        WHERE id = ?
-        """,
-        (updated_task.title, task_id)
-    )
+    with connection.cursor() as cursor:
 
-    connection.commit()
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET title = %s,
+                done = %s
+            WHERE id = %s
+            RETURNING *
+            """,
+            (
+                updated_task.title,
+                updated_task.done,
+                task_id
+            )
+        )
 
-    if cursor.rowcount == 0:
+        row = cursor.fetchone()
+
+    if row is None:
         connection.close()
 
         raise HTTPException(
             status_code=404,
-            detail=f"Task {task_id} not found"
+            detail="Task not found"
         )
 
-    row = connection.execute(
-        "SELECT * FROM tasks WHERE id = ?",
-        (task_id,)
-    ).fetchone()
-
+    connection.commit()
     connection.close()
 
-    return {
-        "id": row["id"],
-        "title": row["title"],
-        "done": bool(row["done"])
-    }
+    return row
 
 
+# DELETE task
 @app.delete(
     "/tasks/{task_id}",
     status_code=204,
@@ -201,19 +177,22 @@ def delete_task(task_id: int):
 
     connection = get_connection()
 
-    cursor = connection.execute(
-        "DELETE FROM tasks WHERE id = ?",
-        (task_id,)
-    )
+    with connection.cursor() as cursor:
+
+        cursor.execute(
+            "DELETE FROM tasks WHERE id = %s",
+            (task_id,)
+        )
+
+        deleted = cursor.rowcount
 
     connection.commit()
-
     connection.close()
 
-    if cursor.rowcount == 0:
+    if deleted == 0:
         raise HTTPException(
             status_code=404,
-            detail=f"Task {task_id} not found"
+            detail="Task not found"
         )
 
     return
