@@ -1,90 +1,403 @@
 # FlyRank Internship — Backend AI Track
 
-## Week 3 · Assignment A2 — Connecting CRUD to SQLite
+## Week 1 · Assignment A3 — Containerize Your Stack
 
-A continuation of **Week 2 / Assignment A1**, migrating the CRUD API from in-memory storage to a persistent **SQLite database**.
+A task CRUD API built with **Python, FastAPI, and PostgreSQL**, with the complete application and database running in Docker using Docker Compose.
 
-### Tech Stack
+This assignment continues the storage evolution:
 
-* Python
+```text
+A1 → In-memory storage
+A2 → SQLite
+A3 → PostgreSQL in Docker
+```
+
+The API endpoints remain the same while the storage layer changes.
+
+---
+
+## Tech Stack
+
+* Python 3.10+
 * FastAPI
-* SQLite (`sqlite3`)
+* PostgreSQL
+* psycopg
+* Docker
+* Docker Compose
 * Uvicorn
+* python-dotenv
 
-### What Changed
+---
 
-**A1:**
-
-```text
-Client → FastAPI → In-memory list
-```
-
-**A2:**
+## Architecture
 
 ```text
-Client → FastAPI → SQLite (tasks.db)
+Client
+   │
+   ▼
+FastAPI API Container
+   │
+   │ DATABASE_URL
+   ▼
+PostgreSQL Container
+   │
+   ▼
+postgres_data volume
 ```
 
-The API endpoints remain the same, but data now survives server restarts.
+Inside the Docker Compose network, the API connects to PostgreSQL using:
 
-### Database
-
-The application automatically creates `tasks.db` and the `tasks` table if they don't exist.
-
-The table contains:
-
-```sql
-id INTEGER PRIMARY KEY AUTOINCREMENT
-title TEXT NOT NULL
-done INTEGER NOT NULL DEFAULT 0
+```text
+db:5432
 ```
 
-Three sample tasks are seeded only when the table is empty.
+The PostgreSQL data is stored in a Docker volume so that tasks survive container restarts.
 
-### API Endpoints
+---
 
-| Method | Endpoint      | Description   |
-| ------ | ------------- | ------------- |
-| GET    | `/tasks`      | Get all tasks |
-| GET    | `/tasks/{id}` | Get a task    |
-| POST   | `/tasks`      | Create a task |
-| PUT    | `/tasks/{id}` | Update a task |
-| DELETE | `/tasks/{id}` | Delete a task |
+## Database
 
-### Run Locally
+The application automatically creates the `tasks` table if it does not already exist.
+
+### `tasks` table
+
+| Column  | Type               | Description       |
+| ------- | ------------------ | ----------------- |
+| `id`    | SERIAL PRIMARY KEY | Unique task ID    |
+| `title` | TEXT               | Task title        |
+| `done`  | BOOLEAN            | Completion status |
+
+Three example tasks are inserted only when the table is empty.
+
+Example:
+
+```text
+1  Learn FastAPI       false
+2  Build CRUD API      false
+3  Upload to GitHub    true
+```
+
+---
+
+## Environment Variables
+
+The database connection is configured through `.env`.
+
+Create a local `.env` file:
+
+```env
+DATABASE_URL=postgresql://postgres:dev@localhost:5432/tasks
+```
+
+The `.env` file is ignored by Git and must **never** be committed.
+
+A `.env.example` file is included in the repository:
+
+```env
+DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/tasks
+```
+
+When Docker Compose runs the application, it uses the PostgreSQL service name:
+
+```text
+postgresql://postgres:dev@db:5432/tasks
+```
+
+---
+
+## Running the Application
+
+### Prerequisites
+
+Install:
+
+* Docker Desktop
+* Git
+
+No local PostgreSQL installation is required for the Dockerized stack.
+
+### Start the complete application
+
+From the project directory:
 
 ```bash
-git clone https://github.com/sparkkdusk/flyrank-week3-a2-crud-sqlite.git
-cd flyrank-week3-a2-crud-sqlite
-
-python -m venv venv
-venv\Scripts\activate
-
-pip install -r requirements.txt
-uvicorn main:app --reload
+docker compose up --build
 ```
 
-API:
+This starts:
 
 ```text
-http://127.0.0.1:8000
+api → FastAPI application
+db  → PostgreSQL database
 ```
 
-Swagger UI:
+The API is available at:
 
 ```text
-http://127.0.0.1:8000/docs
+http://127.0.0.1:3000
 ```
 
-### Key Concepts Practiced
+Swagger documentation:
 
-* SQLite database & tables
-* SQL CRUD operations
-* Parameterized queries
-* Data persistence
+```text
+http://127.0.0.1:3000/docs
+```
+
+### Run in the background
+
+```bash
+docker compose up --build -d
+```
+
+Check running containers:
+
+```bash
+docker compose ps
+```
+
+---
+
+## API Endpoints
+
+| Method | Endpoint      | Description   | Success |
+| ------ | ------------- | ------------- | ------- |
+| GET    | `/tasks`      | Get all tasks | 200     |
+| GET    | `/tasks/{id}` | Get one task  | 200     |
+| POST   | `/tasks`      | Create a task | 201     |
+| PUT    | `/tasks/{id}` | Update a task | 200     |
+| DELETE | `/tasks/{id}` | Delete a task | 204     |
+
+Unknown task IDs return:
+
+```text
+404 Not Found
+```
+
+Invalid or empty task titles return:
+
+```text
+400 Bad Request
+```
+
+---
+
+## Example API Requests
+
+### Get all tasks
+
+```bash
+curl -i http://localhost:3000/tasks
+```
+
+Example response:
+
+```text
+HTTP/1.1 200 OK
+
+[
+  {
+    "id": 1,
+    "title": "Learn FastAPI",
+    "done": false
+  },
+  {
+    "id": 2,
+    "title": "Build CRUD API",
+    "done": false
+  },
+  {
+    "id": 3,
+    "title": "Upload to GitHub",
+    "done": true
+  }
+]
+```
+
+### Get one task
+
+```bash
+curl -i http://localhost:3000/tasks/1
+```
+
+### Create a task
+
+```bash
+curl -i -X POST http://localhost:3000/tasks \
+  -H "Content-Type: application/json" \
+  -d "{\"title\":\"Dockerize the API\"}"
+```
+
+Expected status:
+
+```text
+201 Created
+```
+
+### Update a task
+
+```bash
+curl -i -X PUT http://localhost:3000/tasks/1 \
+  -H "Content-Type: application/json" \
+  -d "{\"title\":\"Learn Docker\",\"done\":true}"
+```
+
+Expected status:
+
+```text
+200 OK
+```
+
+### Delete a task
+
+```bash
+curl -i -X DELETE http://localhost:3000/tasks/1
+```
+
+Expected status:
+
+```text
+204 No Content
+```
+
+---
+
+## Persistence
+
+PostgreSQL uses a Docker named volume:
+
+```text
+postgres_data
+```
+
+This means the database data survives container restarts.
+
+For example:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+Previously created tasks remain in the database.
+
+The volume should **not** be removed when testing persistence.
+
+---
+
+## Database Verification
+
+The PostgreSQL database can be inspected from inside the database container.
+
+Open a PostgreSQL shell:
+
+```bash
+docker compose exec db psql -U postgres -d tasks
+```
+
+List tables:
+
+```sql
+\dt
+```
+
+View tasks:
+
+```sql
+SELECT * FROM tasks;
+```
+
+Example:
+
+```text
+ id |       title        | done
+----+--------------------+------
+  1 | Learn FastAPI      | f
+  2 | Build CRUD API     | f
+  3 | Upload to GitHub   | t
+```
+
+### Database Screenshot
+
+The database screenshot below shows the `tasks` table and its stored rows.
+
+> Add the PostgreSQL database screenshot here before submitting the assignment.
+
+---
+
+## Parameterized Queries
+
+All database queries use parameterized values rather than directly inserting user input into SQL.
+
+For example:
+
+```python
+cursor.execute(
+    "SELECT * FROM tasks WHERE id = %s",
+    (task_id,)
+)
+```
+
+This keeps user-provided values separate from the SQL statement and helps prevent SQL injection.
+
+---
+
+## Project Structure
+
+```text
+PythonCode/
+│
+├── main.py
+├── database.py
+├── requirements.txt
+├── Dockerfile
+├── compose.yaml
+├── .env.example
+├── .gitignore
+├── README.md
+└── ...
+```
+
+The actual `.env` file is intentionally excluded from Git.
+
+---
+
+## What I Practiced
+
+* Docker images and containers
+* PostgreSQL
+* Docker Compose
+* Docker volumes
+* Environment variables and `.env` secrets
+* FastAPI
+* PostgreSQL CRUD operations
+* Parameterized SQL queries
 * Database seeding
-* DB Browser for SQLite
-* Git & GitHub
+* Data persistence
+* Git and GitHub
 
+---
 
-**FlyRank Internship · Backend Track · Week 3 · Assignment A2**
+## Storage Evolution
+
+The same task API has now used three different storage systems:
+
+```text
+A1
+FastAPI → In-memory list
+
+A2
+FastAPI → SQLite
+
+A3
+FastAPI → PostgreSQL
+          ↑
+       Docker
+```
+
+The API behaviour stays the same while the storage implementation changes.
+
+This demonstrates that storage can be treated as an implementation detail behind the API.
+
+---
+
+**FlyRank Internship · Backend AI Track · Week 1 · Assignment A3**
