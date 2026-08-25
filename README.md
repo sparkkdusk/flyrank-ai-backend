@@ -319,10 +319,7 @@ Example:
 ### Database Screenshot
 
 The database screenshot below shows the `tasks` table and its stored rows.
-
-> Add the PostgreSQL database screenshot here before submitting the assignment.
-
----
+![alt text](image-1.png)
 
 ## Parameterized Queries
 
