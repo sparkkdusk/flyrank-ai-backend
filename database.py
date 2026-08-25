@@ -1,24 +1,32 @@
-import sqlite3
+import os
 
-DATABASE_NAME = "tasks.db"
+import psycopg
+from psycopg.rows import dict_row
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_connection():
-    connection = sqlite3.connect(DATABASE_NAME)
-    connection.row_factory = sqlite3.Row
-    return connection
+    return psycopg.connect(
+        DATABASE_URL,
+        row_factory=dict_row
+    )
 
 
 def create_table():
     connection = get_connection()
 
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            done INTEGER NOT NULL DEFAULT 0
-        )
-    """)
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                done BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """)
 
     connection.commit()
     connection.close()
@@ -27,25 +35,27 @@ def create_table():
 def seed_tasks():
     connection = get_connection()
 
-    result = connection.execute(
-        "SELECT COUNT(*) AS count FROM tasks"
-    ).fetchone()
-
-    if result["count"] == 0:
-        connection.executemany(
-            """
-            INSERT INTO tasks (title, done)
-            VALUES (?, ?)
-            """,
-            [
-                ("Learn FastAPI", 0),
-                ("Build CRUD API", 0),
-                ("Upload to GitHub", 1)
-            ]
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT COUNT(*) AS count FROM tasks"
         )
 
-        connection.commit()
+        result = cursor.fetchone()
 
+        if result["count"] == 0:
+            cursor.executemany(
+                """
+                INSERT INTO tasks (title, done)
+                VALUES (%s, %s)
+                """,
+                [
+                    ("Learn FastAPI", False),
+                    ("Build CRUD API", False),
+                    ("Upload to GitHub", True)
+                ]
+            )
+
+    connection.commit()
     connection.close()
 
 
